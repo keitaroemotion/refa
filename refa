@@ -1,0 +1,83 @@
+#!/usr/bin/env ruby
+
+require "ptools"
+require "colorize"
+
+target_path = ARGV.select{|x| File.exist?(x) }.first || "."
+
+args         = ARGV.select{|x| !File.exist?(x)}
+options      = args.select{|x| x.start_with?("-")}
+values       = args.select{|x| !x.start_with?("-")}
+
+if options.include?("-ts")
+  values = ["\t", "\s\s\s\s"]
+end
+
+abort "\nEither argument [from] or [to] are missing.\n" if values.size == 0 
+from         = values[0]
+to           = values[1]
+
+puts "from: #{from}, to: #{to} target_path: #{target_path}"
+
+def get_files(target_path)
+  Dir["#{target_path}/**/*"].select{|x| File.file?(x) && !File.binary?(x)}.select{|x| !(x =~ /\.(jpg|png|jpeg|gif|docx|xlsx|xls|pdf|gem|sqlite3)$/) }
+end
+
+def write(file, lines)
+  f = File.open(file, "w")
+  lines.each do |line|
+    f.puts line
+  end
+  f.close
+rescue => e
+  puts "Fail: #{file}: #{e}"
+end
+
+if !to
+  system "grep -r --colour=auto #{from} #{target_path}"
+else
+  puts "Targets"
+  puts
+  files = get_files(target_path).map do |file|
+    content = File.open(file, "r").to_a.join
+    if content.include?(from)
+      puts file 
+      sleep 0.05
+      file
+    end
+  end.compact
+
+  print "[Y/n]? "
+  ans = $stdin.gets.chomp
+  if /[Nn]+/ =~ ans
+    abort "aborted."
+  end
+
+  apply_all = false
+  files.map do |file|
+    lines = []
+
+    f = File.open(file, "r")
+    f.to_a.each do |line|
+      if line.include?(from)
+        puts "- ".red + line.gsub(from, from.red)
+        puts "+ ".green + line.gsub(from, to.green)
+        if apply_all
+            sleep 0.4
+            line = line.gsub(from, to)
+        else
+          print "[Y/n/a]? "
+          ans = $stdin.gets.chomp
+          if /[YyAa]+/ =~ ans
+            apply_all = true if /[Aa]+/ =~ ans
+            line = line.gsub(from, to)
+          end
+        end
+      end
+      lines.push line
+    end
+    f.close
+
+    write(file, lines)
+  end
+end
